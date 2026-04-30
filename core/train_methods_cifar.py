@@ -51,6 +51,9 @@ kernel_fn = rbf_kernel_fn
 coreset_methods = ['uniform', 'coreset', 'bcsr']
 
 def classwise_fair_selection(task, cand_target, sorted_index, num_per_label, args, is_shuffle=True):
+    # 确保sorted_index在CPU上
+    if isinstance(sorted_index, torch.Tensor) and sorted_index.is_cuda:
+        sorted_index = sorted_index.cpu()
     num_examples_per_task = args.memory_size // task
     num_examples_per_class = num_examples_per_task // args.n_classes
     num_residuals = num_examples_per_task - num_examples_per_class * args.n_classes
@@ -103,8 +106,9 @@ def select_coreset(loader, task, model, candidates, args, candidate_size=1000, f
             if batch_idx == cand_size:
                 break
             try:
-                cand_data.append(data[candidates[batch_idx]])
-                cand_target.append(target[candidates[batch_idx]])
+                idx = candidates[batch_idx].cpu() if candidates[batch_idx].is_cuda else candidates[batch_idx]
+                cand_data.append(data[idx])
+                cand_target.append(target[idx])
             except IndexError:
                 pass
         cand_data = torch.cat(cand_data, 0)
@@ -136,8 +140,9 @@ def select_coreset(loader, task, model, candidates, args, candidate_size=1000, f
             summarizer = Summarizer.factory(args.select_type, rs)
             pick = summarizer.build_summary(cand_data.cpu().numpy(), cand_target.cpu().numpy(), num_examples_per_task, task_id=task, method=args.select_type, model=model, device=DEVICE)
 
-        loader['coreset'][task]['train'].data = copy.deepcopy(cand_data[pick])
-        loader['coreset'][task]['train'].targets = copy.deepcopy(cand_target[pick])
+        pick_cpu = pick.cpu() if pick.is_cuda else pick
+        loader['coreset'][task]['train'].data = copy.deepcopy(cand_data[pick_cpu])
+        loader['coreset'][task]['train'].targets = copy.deepcopy(cand_target[pick_cpu])
 
     else:
         pass
@@ -213,11 +218,12 @@ def train_single_step(model, our_bc, optimizer, loader, task, step, outer_loss, 
                                                             method=args.select_type, model=model, device=DEVICE,
                                                             taskid=task_id)
 
-            pred = model(data[pick], task_id)
-            loss = criterion(pred, target[pick])
+            pick_idx = pick.cpu() if pick.is_cuda else pick
+            pred = model(data[pick_idx], task_id)
+            loss = criterion(pred, target[pick_idx])
             loss.backward()
             if is_last_step:
-                candidates_indices.append(pick)
+                candidates_indices.append(pick_idx)
         else:
             size = min(len(data), args.batch_size)
             pick = torch.randperm(len(data))[:size]
@@ -261,8 +267,9 @@ def train_coreset_single_step(model, our_bc, optimizer, loader, task, step, oute
                                                                      start_size=1, inner_reg=1e-3)
         else:
             pick = torch.randperm(len(data))[:size]
-        pred = model(data[pick], task_id)
-        loss = criterion(pred, target[pick])
+        pick_idx = pick.cpu() if pick.is_cuda else pick
+        pred = model(data[pick_idx], task_id)
+        loss = criterion(pred, target[pick_idx])
         try:
             ref_data = next(ref_iterloader)
         except StopIteration:
@@ -332,7 +339,7 @@ def train_task_sequentially(args, task, train_loader, outer_loss):
     bc = None
     if args.select_type == 'bcsr':
         config = {'n_classes':args.n_classes, 'dropout':args.dropout, 'mlp_hiddens':args.mlp_hiddens}
-        proxy_model = ResNet18(config=config).cuda()
+        proxy_model = ResNet18(config=config).to(DEVICE)
         bc = BCSR_Coreset(proxy_model, args.lr_proxy_model, args.beta, out_dim=100,
                               max_outer_it=args.outer_iter, max_inner_it=args.inner_iter,
                               weight_lr=args.lr_weight, candidate_batch_size=600, logging_period=1000)
