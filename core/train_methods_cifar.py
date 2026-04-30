@@ -58,7 +58,7 @@ def rbf_kernel_fn(x, y, sigma=100.0):
 
 kernel_fn = rbf_kernel_fn
 
-coreset_methods = ['uniform', 'coreset', 'bcsr']
+coreset_methods = ['uniform', 'coreset', 'bcsr', 'herding']
 
 def classwise_fair_selection(task, cand_target, sorted_index, num_per_label, args, is_shuffle=True):
     # 确保sorted_index是NumPy数组（用于后续索引操作）
