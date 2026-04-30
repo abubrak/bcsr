@@ -115,7 +115,13 @@ class HerdingCoreset(BaseCoresetSelector):
     def _herding_per_class(self, features, labels, num_samples):
         """Perform herding separately for each class"""
         unique_labels = np.unique(labels)
-        samples_per_class = num_samples // len(unique_labels)
+        n_total = len(features)
+
+        # If requesting more samples than available, return all
+        if num_samples >= n_total:
+            return np.arange(n_total)
+
+        samples_per_class = max(1, num_samples // len(unique_labels))
         selected_indices = []
 
         for label in unique_labels:
@@ -143,5 +149,10 @@ class HerdingCoreset(BaseCoresetSelector):
                     selected_for_class.append(class_indices[closest_idx])
 
                 selected_indices.extend(selected_for_class)
+
+        # If we didn't get enough samples, add more from remaining classes
+        if len(selected_indices) < num_samples:
+            remaining_indices = set(range(n_total)) - set(selected_indices)
+            selected_indices.extend(list(remaining_indices)[:num_samples - len(selected_indices)])
 
         return np.array(selected_indices[:num_samples])
