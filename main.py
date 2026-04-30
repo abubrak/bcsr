@@ -59,7 +59,7 @@ def main():
     TRIAL_ID = os.environ.get('NNI_TRIAL_JOB_ID', get_random_string(5))
     EXP_DIR = './checkpoints/{}'.format(TRIAL_ID)
 
-    coreset_methods = ['uniform', 'coreset', 'bcsr']
+    coreset_methods = ['uniform', 'bcsr', 'herding', 'gradmatch', 'gss']
 
     # Get the CL arguments
     args = get_arguments()

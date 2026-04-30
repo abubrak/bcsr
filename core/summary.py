@@ -26,8 +26,19 @@ class Summarizer(ABC):
         pass
 
     def factory(type, rs):
-        if type == 'uniform': return UniformSummarizer(rs)
-        raise TypeError('Unkown summarizer type ' + type)
+        if type == 'uniform':
+            return UniformSummarizer(rs)
+        elif type == 'herding':
+            from .coreset_baselines import HerdingCoreset
+            return HerdingCoreset(device='cuda')
+        elif type == 'gradmatch':
+            from .gradmatch_coreset import GradMatchCoreset
+            return GradMatchCoreset(device='cuda')
+        elif type == 'gss':
+            from .gss_coreset import GSSCoreset
+            return GSSCoreset(device='cuda')
+        else:
+            raise TypeError('Unknown summarizer type ' + type)
 
     factory = staticmethod(factory)
 

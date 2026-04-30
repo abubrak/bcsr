@@ -12,6 +12,9 @@ from .mode_connectivity import get_line_loss, get_coreset_loss, reconstruct_core
 from .summary import Summarizer
 from .bilevel_coreset import BilevelCoreset
 from .bcsr_coreset import BCSR_Coreset
+from .coreset_baselines import HerdingCoreset
+from .gradmatch_coreset import GradMatchCoreset
+from .gss_coreset import GSSCoreset
 # NTK已移除，使用PyTorch代理模型替代
 # from .ntk_generator import generate_fnn_ntk, generate_cnn_ntk, generate_resnet_ntk
 from .models import ResNet18, MLP
@@ -58,7 +61,7 @@ def rbf_kernel_fn(x, y, sigma=100.0):
 
 kernel_fn = rbf_kernel_fn
 
-coreset_methods = ['uniform', 'coreset', 'bcsr', 'herding']
+coreset_methods = ['uniform', 'bcsr', 'herding', 'gradmatch', 'gss']
 
 def classwise_fair_selection(task, cand_target, sorted_index, num_per_label, args, is_shuffle=True):
     # 确保sorted_index是NumPy数组（用于后续索引操作）
@@ -141,7 +144,21 @@ def select_coreset(loader, task, model, candidates, args, candidate_size=1000, f
             pick, _ = bc.coreset_select(model, cand_data.cpu().numpy(), cand_target.cpu().numpy(), task,
                                           topk=len(cand_target))
             pick = classwise_fair_selection(task, cand_target, pick, num_per_label, args, is_shuffle=True)
-
+        elif args.select_type == 'herding':
+            # Herding method
+            herding = HerdingCoreset(device=DEVICE)
+            pick = herding.select(cand_data, cand_target, num_examples_per_task, task_id, model=model)
+            pick = classwise_fair_selection(task, cand_target, pick, num_per_label, args, is_shuffle=True)
+        elif args.select_type == 'gradmatch':
+            # GradMatch method
+            gradmatch = GradMatchCoreset(device=DEVICE)
+            pick = gradmatch.select(cand_data, cand_target, num_examples_per_task, task_id, model=model)
+            pick = classwise_fair_selection(task, cand_target, pick, num_per_label, args, is_shuffle=True)
+        elif args.select_type == 'gss':
+            # GSS method
+            gss = GSSCoreset(device=DEVICE)
+            pick = gss.select(cand_data, cand_target, num_examples_per_task, task_id, model=model)
+            pick = classwise_fair_selection(task, cand_target, pick, num_per_label, args, is_shuffle=True)
         elif args.select_type == 'coreset':
             pick, _, = bc.build_with_representer_proxy_batch(cand_data.cpu().numpy(), cand_target.cpu().numpy(),
                                                                  len(cand_target), kernel_fn,
@@ -170,7 +187,7 @@ def update_coreset(loader, task, model, args, bc=None):
             tid_targets = loader['coreset'][tid]['train'].targets
             num_per_label = [len((tid_targets.cpu()==jj).nonzero()) for jj in range(args.n_classes)]
             rs = np.random.RandomState(0)
-            if args.select_type != 'coreset' and args.select_type != 'bcsr':
+            if args.select_type == 'uniform':
                 summarizer = Summarizer.factory(args.select_type, rs)
                 if len(loader['coreset'][tid]['train'].targets.cpu().numpy()) <= num_examples_per_task:
                     selected = np.arange(0, num_examples_per_task)
@@ -178,6 +195,30 @@ def update_coreset(loader, task, model, args, bc=None):
                     selected = summarizer.build_summary(loader['coreset'][tid]['train'].data.cpu().numpy(),
                                                         loader['coreset'][tid]['train'].targets.cpu().numpy(),
                                                         num_examples_per_task, task_id=tid, method=args.select_type, model=model, device=DEVICE, taskid=tid)
+            elif args.select_type == 'herding':
+                # Herding method
+                herding = HerdingCoreset(device=DEVICE)
+                if len(loader['coreset'][tid]['train'].targets.cpu().numpy()) <= num_examples_per_task:
+                    selected = np.arange(0, num_examples_per_task)
+                else:
+                    pick = herding.select(tid_coreset, tid_targets, num_examples_per_task, tid, model=model)
+                    selected = classwise_fair_selection(task, tid_targets, pick, num_per_label, args)
+            elif args.select_type == 'gradmatch':
+                # GradMatch method
+                gradmatch = GradMatchCoreset(device=DEVICE)
+                if len(loader['coreset'][tid]['train'].targets.cpu().numpy()) <= num_examples_per_task:
+                    selected = np.arange(0, num_examples_per_task)
+                else:
+                    pick = gradmatch.select(tid_coreset, tid_targets, num_examples_per_task, tid, model=model)
+                    selected = classwise_fair_selection(task, tid_targets, pick, num_per_label, args)
+            elif args.select_type == 'gss':
+                # GSS method
+                gss = GSSCoreset(device=DEVICE)
+                if len(loader['coreset'][tid]['train'].targets.cpu().numpy()) <= num_examples_per_task:
+                    selected = np.arange(0, num_examples_per_task)
+                else:
+                    pick = gss.select(tid_coreset, tid_targets, num_examples_per_task, tid, model=model)
+                    selected = classwise_fair_selection(task, tid_targets, pick, num_per_label, args)
             elif args.select_type == 'coreset':
                 pick, _,= bc.build_with_representer_proxy_batch(tid_coreset.cpu().numpy(), tid_targets.cpu().numpy(),
                                                                  len(tid_targets), kernel_fn,
