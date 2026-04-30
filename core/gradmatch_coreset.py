@@ -16,10 +16,14 @@ class GradMatchCoreset:
         "GradMatch: Gradient-based Test Time Sample Selection for Efficient Training"
     """
 
-    def __init__(self, device='cuda', lr=0.01, epochs=50):
+    def __init__(self, device='cuda'):
+        """
+        Initialize GradMatch coreset selector.
+
+        Args:
+            device: Device to use for computation ('cuda' or 'cpu')
+        """
         self.device = device if torch.cuda.is_available() else 'cpu'
-        self.lr = lr
-        self.epochs = epochs
 
     def select(self, X, y, num_samples, task_id=None, model=None, **kwargs):
         """
@@ -35,8 +39,15 @@ class GradMatchCoreset:
         Returns:
             selected_indices: NumPy array of selected indices
         """
+        # Validate inputs
         if model is None:
             raise ValueError("GradMatch requires a model for gradient computation")
+        if num_samples <= 0:
+            raise ValueError(f"num_samples must be positive, got {num_samples}")
+        if len(X) != len(y):
+            raise ValueError(f"X and y must have same length: {len(X)} != {len(y)}")
+        if len(X) == 0:
+            raise ValueError("Dataset cannot be empty")
 
         X_tensor = X if isinstance(X, torch.Tensor) else torch.from_numpy(X).float()
         y_tensor = y if isinstance(y, torch.Tensor) else torch.from_numpy(y).long()
@@ -74,8 +85,9 @@ class GradMatchCoreset:
 
             # Compute gradients for each sample
             for j in range(len(batch_X)):
-                if batch_X[j].requires_grad:
-                    batch_X[j].retain_grad()
+                # Always enable gradient computation for input
+                batch_X.requires_grad_(True)
+                batch_X[j].retain_grad()
 
                 loss_j = losses[j]
                 loss_j.backward(retain_graph=(j < len(batch_X) - 1))
