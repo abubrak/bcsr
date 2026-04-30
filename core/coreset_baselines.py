@@ -170,3 +170,100 @@ class HerdingCoreset(BaseCoresetSelector):
             selected_indices.extend(list(remaining_indices)[:num_samples - len(selected_indices)])
 
         return np.array(selected_indices[:num_samples])
+
+
+class GradMatchCoreset(BaseCoresetSelector):
+    """
+    GradMatch Coreset Selection
+
+    Selects samples based on gradient matching loss.
+    Finds coreset such that gradients on coreset match gradients on full dataset.
+
+    Reference:
+        "GradMatch: Gradient-based Test Time Sample Selection for Efficient Training"
+    """
+
+    def __init__(self, device='cuda', lr=0.01, epochs=50):
+        super().__init__(device)
+        self.lr = lr
+        self.epochs = epochs
+
+    def select(self, X, y, num_samples, task_id=None, model=None, **kwargs):
+        """
+        Select coreset using gradient matching
+
+        Args:
+            X: Data tensor (N, C, H, W)
+            y: Label tensor (N,)
+            num_samples: Number of samples to select
+            task_id: Current task ID
+            model: Neural network model (required)
+
+        Returns:
+            selected_indices: NumPy array of selected indices
+        """
+        if model is None:
+            raise ValueError("GradMatch requires a model for gradient computation")
+
+        # Validate inputs
+        if num_samples <= 0:
+            raise ValueError(f"num_samples must be positive, got {num_samples}")
+        if len(X) != len(y):
+            raise ValueError(f"X and y must have same length: {len(X)} != {len(y)}")
+        if len(X) == 0:
+            raise ValueError("Dataset cannot be empty")
+
+        X_tensor = self._ensure_tensor(X) if isinstance(X, np.ndarray) else X
+        y_tensor = self._ensure_tensor(y) if isinstance(y, np.ndarray) else y
+
+        # Compute sample importance scores via gradient similarity
+        importance_scores = self._compute_importance(
+            X_tensor, y_tensor, model, task_id
+        )
+
+        # Select top-k samples with highest importance
+        selected_indices = np.argsort(importance_scores)[-num_samples:]
+
+        return selected_indices[::-1]  # Return in descending order
+
+    def _compute_importance(self, X, y, model, task_id):
+        """
+        Compute importance scores for each sample based on gradient norms
+
+        Samples with larger gradients are more important for learning.
+        """
+        model.eval()
+        importance_scores = []
+
+        criterion = nn.CrossEntropyLoss(reduction='none')
+        batch_size = 32
+
+        # Compute gradient norm for each sample
+        for i in range(0, len(X), batch_size):
+            batch_X = X[i:i+batch_size].to(self.device)
+            batch_y = y[i:i+batch_size].to(self.device)
+
+            # Forward pass
+            logits = model(batch_X, task_id)
+            losses = criterion(logits, batch_y)
+
+            # Compute gradients for each sample
+            for j in range(len(batch_X)):
+                if batch_X[j].requires_grad:
+                    batch_X[j].retain_grad()
+
+                loss_j = losses[j]
+                loss_j.backward(retain_graph=(j < len(batch_X) - 1))
+
+                # Compute gradient norm
+                grad_norm = 0.0
+                for param in model.parameters():
+                    if param.grad is not None:
+                        grad_norm += param.grad.norm().item()
+
+                importance_scores.append(grad_norm)
+
+                # Zero gradients
+                model.zero_grad()
+
+        return np.array(importance_scores)
