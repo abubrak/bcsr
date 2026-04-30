@@ -77,6 +77,14 @@ class HerdingCoreset(BaseCoresetSelector):
         Returns:
             selected_indices: NumPy array of selected indices
         """
+        # Validate inputs
+        if num_samples <= 0:
+            raise ValueError(f"num_samples must be positive, got {num_samples}")
+        if len(X) != len(y):
+            raise ValueError(f"X and y must have same length: {len(X)} != {len(y)}")
+        if len(X) == 0:
+            raise ValueError("Dataset cannot be empty")
+
         X_np = self._ensure_numpy(X)
         y_np = self._ensure_numpy(y)
 
@@ -97,6 +105,12 @@ class HerdingCoreset(BaseCoresetSelector):
 
     def _extract_features(self, X, y, model, task_id):
         """Extract features from penultimate layer of model"""
+        if not hasattr(model, 'embed'):
+            raise ValueError(
+                f"Model {type(model).__name__} does not have 'embed()' method. "
+                "HerdingCoreset requires models with feature extraction capability."
+            )
+
         model.eval()
         features_list = []
         batch_size = 128
@@ -104,7 +118,7 @@ class HerdingCoreset(BaseCoresetSelector):
         with torch.no_grad():
             for i in range(0, len(X), batch_size):
                 batch_X = X[i:i+batch_size].to(self.device)
-                batch_y = y[i:i+batch_size].to(self.device)
+                batch_y = y[i:i+batch_size]
 
                 # Get features from penultimate layer
                 features = model.embed(batch_X)
