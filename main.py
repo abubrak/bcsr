@@ -64,7 +64,22 @@ def main():
     # Get the CL arguments
     args = get_arguments()
 
-    if 'imb-cifar' or 'noise-cifar' in args.dataset:
+    # 检查方法是否支持
+    if args.select_type == 'coreset':
+        print("="*60)
+        print("错误: 'coreset' 方法未实现")
+        print("="*60)
+        print("  coreset 方法需要 NTK (Neural Tangent Kernel)，")
+        print("  但此代码库未实现该功能。")
+        print()
+        print("  可用方法: bcsr, uniform")
+        print()
+        print("  bcsr   - 论文提出的方法（基于正则化的双层优化）")
+        print("  uniform - 随机均匀采样（baseline）")
+        print("="*60)
+        sys.exit(1)
+
+    if 'imb-cifar' in args.dataset or 'noise-cifar' in args.dataset:
         args.lr_decay = 0.875
         args.ref_hyp = 0.1
         args.lr_proxy_model = 10

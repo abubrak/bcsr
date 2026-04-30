@@ -20,6 +20,16 @@ import copy
 gumbel_dist = td.gumbel.Gumbel(0,1)
 
 
+def ensure_tensor_cpu(idx):
+    """将索引转换为CPU上的PyTorch张量，兼容NumPy数组和PyTorch张量"""
+    if isinstance(idx, np.ndarray):
+        return torch.from_numpy(idx).long()
+    elif isinstance(idx, torch.Tensor):
+        return idx.cpu().long()
+    else:
+        return torch.tensor(idx, dtype=torch.long, device='cpu')
+
+
 # NTK核函数已移除，使用PyTorch代理模型替代
 # def get_kernel_fn():
 #         return lambda x, y: generate_resnet_ntk(x.transpose(0, 2, 3, 1), y.transpose(0, 2, 3, 1))
@@ -51,9 +61,11 @@ kernel_fn = rbf_kernel_fn
 coreset_methods = ['uniform', 'coreset', 'bcsr']
 
 def classwise_fair_selection(task, cand_target, sorted_index, num_per_label, args, is_shuffle=True):
-    # 确保sorted_index在CPU上
-    if isinstance(sorted_index, torch.Tensor) and sorted_index.is_cuda:
-        sorted_index = sorted_index.cpu()
+    # 确保sorted_index是NumPy数组（用于后续索引操作）
+    if isinstance(sorted_index, torch.Tensor):
+        sorted_index = sorted_index.cpu().numpy()
+    elif not isinstance(sorted_index, np.ndarray):
+        sorted_index = np.array(sorted_index)
     num_examples_per_task = args.memory_size // task
     num_examples_per_class = num_examples_per_task // args.n_classes
     num_residuals = num_examples_per_task - num_examples_per_class * args.n_classes
@@ -106,7 +118,7 @@ def select_coreset(loader, task, model, candidates, args, candidate_size=1000, f
             if batch_idx == cand_size:
                 break
             try:
-                idx = candidates[batch_idx].cpu() if candidates[batch_idx].is_cuda else candidates[batch_idx]
+                idx = ensure_tensor_cpu(candidates[batch_idx])
                 cand_data.append(data[idx])
                 cand_target.append(target[idx])
             except IndexError:
@@ -140,7 +152,7 @@ def select_coreset(loader, task, model, candidates, args, candidate_size=1000, f
             summarizer = Summarizer.factory(args.select_type, rs)
             pick = summarizer.build_summary(cand_data.cpu().numpy(), cand_target.cpu().numpy(), num_examples_per_task, task_id=task, method=args.select_type, model=model, device=DEVICE)
 
-        pick_cpu = pick.cpu() if pick.is_cuda else pick
+        pick_cpu = ensure_tensor_cpu(pick)
         loader['coreset'][task]['train'].data = copy.deepcopy(cand_data[pick_cpu])
         loader['coreset'][task]['train'].targets = copy.deepcopy(cand_target[pick_cpu])
 
@@ -218,7 +230,7 @@ def train_single_step(model, our_bc, optimizer, loader, task, step, outer_loss, 
                                                             method=args.select_type, model=model, device=DEVICE,
                                                             taskid=task_id)
 
-            pick_idx = pick.cpu() if pick.is_cuda else pick
+            pick_idx = ensure_tensor_cpu(pick)
             pred = model(data[pick_idx], task_id)
             loss = criterion(pred, target[pick_idx])
             loss.backward()
@@ -267,7 +279,7 @@ def train_coreset_single_step(model, our_bc, optimizer, loader, task, step, oute
                                                                      start_size=1, inner_reg=1e-3)
         else:
             pick = torch.randperm(len(data))[:size]
-        pick_idx = pick.cpu() if pick.is_cuda else pick
+        pick_idx = ensure_tensor_cpu(pick)
         pred = model(data[pick_idx], task_id)
         loss = criterion(pred, target[pick_idx])
         try:
