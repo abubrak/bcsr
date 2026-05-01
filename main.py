@@ -36,10 +36,12 @@ def get_arguments():
     parser.add_argument("--memory_size", type=int, default=100,  help="size of buffer data")
     parser.add_argument("--stream_size", type=int, default=50,  help="size of stream mini-batch")
     parser.add_argument("--batch_size", type=int, default=10,  help="size of training data")
-    parser.add_argument("--n_classes", type=int, default=5,  help="number of classes")
+    parser.add_argument("--n_classes", type=int, default=5,
+                        help="number of classes per task (auto-detected from dataset)")
     parser.add_argument("--ref_hyp", type=float, default=0.5,  help="coefficient for balancing the current loss and reference loss")
     parser.add_argument("--beta", type=float, default=0.1,  help="coefficient for balancing the current loss and regularizer")
-    parser.add_argument("--num_tasks", type=int, default=20,  help="number of tasks in continual learning")
+    parser.add_argument("--num_tasks", type=int, default=5,
+                        help="number of tasks in continual learning (default: 5 for CIFAR-10/MNIST, 20 for CIFAR-100)")
     parser.add_argument("--seq_epochs", type=int, default=1,  help="epochs for continual learning")
     parser.add_argument("--outer_iter", type=int, default=5,  help="optimization iterations for outer loops")
     parser.add_argument("--inner_iter", type=int, default=1,  help="optimization iterations for inner loops")
@@ -114,6 +116,15 @@ def main():
     loaders = get_all_loaders(seed, args.dataset, args.num_tasks, \
                               args.batch_size, args.stream_size, \
                               args.memory_size)
+
+    # Auto-detect n_classes based on dataset
+    if 'cifar100' in args.dataset.lower():
+        args.n_classes = 5
+    elif 'cifar10' in args.dataset.lower():
+        args.n_classes = 2
+    elif 'mnist' in args.dataset.lower():
+        args.n_classes = 2
+    # else: keep user-specified or default value
 
     print(args)
 
