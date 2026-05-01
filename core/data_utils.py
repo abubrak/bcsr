@@ -547,6 +547,113 @@ def get_noise_split_cifar10(task, bs_intra, cifar_train, cifar_test, noise_rate=
     return train_loader, test_loader
 
 #########################################################################################################
+###        Split MNIST (Class-Incremental)
+#########################################################################################################
+def get_split_mnist(task_id, batch_size, mnist_train, mnist_test):
+    """
+    Returns a single task of split MNIST dataset
+
+    MNIST: 10 classes, 2 classes per task (5 tasks total)
+
+    Args:
+        task_id: Task identifier (1-5)
+        batch_size: Batch size
+        mnist_train: MNIST training dataset
+        mnist_test: MNIST test dataset
+
+    Returns:
+        train_loader, test_loader: Data loaders for the task
+    """
+    start_class = (task_id - 1) * 2
+    end_class = task_id * 2
+
+    targets_train = torch.tensor(mnist_train.targets)
+    target_train_idx = ((targets_train >= start_class) & (targets_train < end_class))
+
+    targets_test = torch.tensor(mnist_test.targets)
+    target_test_idx = ((targets_test >= start_class) & (targets_test < end_class))
+
+    train_loader = torch.utils.data.DataLoader(
+        torch.utils.data.dataset.Subset(mnist_train, np.where(target_train_idx == 1)[0]),
+        batch_size=batch_size, shuffle=True
+    )
+    test_loader = torch.utils.data.DataLoader(
+        torch.utils.data.dataset.Subset(mnist_test, np.where(target_test_idx == 1)[0]),
+        batch_size=batch_size, shuffle=True
+    )
+
+    return train_loader, test_loader
+
+def get_subset_split_mnist(task_id, batch_size, mnist_train, num_examples):
+    """
+    Returns split MNIST subset for coreset selection
+
+    Args:
+        task_id: Task identifier (1-5)
+        batch_size: Batch size
+        mnist_train: MNIST training dataset
+        num_examples: Number of examples per task
+
+    Returns:
+        train_loader, []: Training loader and empty test loader
+    """
+    start_class = (task_id - 1) * 2
+    end_class = task_id * 2
+
+    per_class_examples = num_examples // 2
+    targets_train = torch.tensor(mnist_train.targets)
+
+    trains = []
+    for class_number in range(start_class, end_class):
+        target = (targets_train == class_number)
+        class_train_idx = np.random.choice(
+            np.where(target == 1)[0],
+            per_class_examples,
+            False
+        )
+        current_class_train_dataset = torch.utils.data.dataset.Subset(mnist_train, class_train_idx)
+        trains.append(current_class_train_dataset)
+
+    trains = ConcatDataset(trains)
+    train_loader = torch.utils.data.DataLoader(trains, batch_size=batch_size, shuffle=True)
+
+    return train_loader, []
+
+def get_multitask_mnist_loaders(num_tasks, batch_size, num_examples):
+    """
+    Returns multitask loaders for MNIST (5 tasks, 2 classes per task)
+
+    Args:
+        num_tasks: Number of tasks (should be 5 for MNIST)
+        batch_size: Batch size
+        num_examples: Total number of training examples
+
+    Returns:
+        all_mtl_data: Dictionary containing train/val data for each task
+    """
+    num_examples_per_task = num_examples // num_tasks
+    trains = []
+    tests = []
+    all_mtl_data = {}
+
+    mnist_transforms = torchvision.transforms.Compose([torchvision.transforms.ToTensor()])
+    mnist_train = torchvision.datasets.MNIST('./data/', train=True, download=True, transform=mnist_transforms)
+    mnist_test = torchvision.datasets.MNIST('./data/', train=False, download=True, transform=mnist_transforms)
+
+    for task in range(1, num_tasks + 1):
+        all_mtl_data[task] = {}
+        train_loader, test_loader = fast_mnist_loader(
+            get_subset_split_mnist(task, batch_size, mnist_train, num_examples_per_task),
+            task
+        )
+        trains += train_loader
+        tests += test_loader
+        all_mtl_data[task]['train'] = random.sample(trains[:], len(trains))
+        all_mtl_data[task]['val'] = tests[:]
+
+    return all_mtl_data
+
+#########################################################################################################
 ###        Imbalanced Rotated MNIST
 #########################################################################################################
 def get_imbalanced_rotated_mnist(task_id, batch_size, per_task_rotation,num_examples=3000):
@@ -1132,6 +1239,11 @@ def get_all_loaders(seed, dataset, num_tasks, bs_inter, bs_intra, num_examples, 
     elif 'perm' in dataset and 'mnist' in dataset:
         pass
         # loaders['multitask'] = get_multitask_permuted_mnist(num_tasks, bs_inter, num_examples)
+    elif 'mnist' in dataset:
+        loaders['multitask'] = get_multitask_mnist_loaders(num_tasks, bs_inter, num_examples)
+        mnist_transforms = torchvision.transforms.Compose([torchvision.transforms.ToTensor()])
+        mnist_train = torchvision.datasets.MNIST('./data/', train=True, download=True, transform=mnist_transforms)
+        mnist_test = torchvision.datasets.MNIST('./data/', train=False, download=True, transform=mnist_transforms)
     else:
         raise Exception("{} not implemented!".format(dataset))
 
@@ -1203,6 +1315,21 @@ def get_all_loaders(seed, dataset, num_tasks, bs_inter, bs_intra, num_examples, 
                     seq_loader_train , seq_loader_val = fast_cifar_loader(get_split_cifar100(task, bs_intra, cifar_train, cifar_test), task, 'cpu')
                     sub_loader_train , _ = fast_cifar_loader(get_subset_split_cifar100(task, bs_inter, cifar_train, 5*num_examples), task, 'cpu')
                 loaders['coreset'][task]['train'] = Coreset(c_size, [3, 32, 32])
+            elif 'mnist' in dataset:
+                if 'imb' in dataset:
+                    raise NotImplementedError("Imbalanced MNIST not implemented yet")
+                elif 'noise' in dataset:
+                    raise NotImplementedError("Noisy MNIST not implemented yet")
+                else:
+                    seq_loader_train, seq_loader_val = fast_mnist_loader(
+                        get_split_mnist(task, bs_intra, mnist_train, mnist_test),
+                        task, 'cpu'
+                    )
+                    sub_loader_train, _ = fast_mnist_loader(
+                        get_subset_split_mnist(task, bs_inter, mnist_train, 5 * num_examples),
+                        task, 'cpu'
+                    )
+                loaders['coreset'][task]['train'] = Coreset(c_size, [1, 28, 28])
             loaders['sequential'][task]['train'], loaders['sequential'][task]['val'] = seq_loader_train, seq_loader_val
             loaders['subset'][task]['train'] = sub_loader_train
         return loaders
@@ -1243,6 +1370,15 @@ def get_all_loaders(seed, dataset, num_tasks, bs_inter, bs_intra, num_examples, 
             elif 'cifar' in dataset:
                 seq_loader_train , seq_loader_val = fast_cifar_loader(get_split_cifar100(task, bs_intra, cifar_train, cifar_test), task, 'cpu')
                 sub_loader_train , _ = fast_cifar_loader(get_subset_split_cifar100(task, bs_inter, cifar_train, 5*num_examples), task, 'cpu')
+            elif 'mnist' in dataset:
+                seq_loader_train, seq_loader_val = fast_mnist_loader(
+                    get_split_mnist(task, bs_intra, mnist_train, mnist_test),
+                    task, 'cpu'
+                )
+                sub_loader_train, _ = fast_mnist_loader(
+                    get_subset_split_mnist(task, bs_inter, mnist_train, 5 * num_examples),
+                    task, 'cpu'
+                )
             loaders['sequential'][task]['train'], loaders['sequential'][task]['val'] = seq_loader_train, seq_loader_val
             loaders['subset'][task]['train'] = sub_loader_train
         return loaders
