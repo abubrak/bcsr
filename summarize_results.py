@@ -18,7 +18,7 @@ import sys
 def parse_exp_name(filename):
     """从文件名解析实验配置"""
     # 文件名格式: YYYY-MM-DD-HH-MM-SS-{dataset}-{method}_seqlr..._seqep..._seqbs...
-    match = re.search(r'(\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2})-(cifar-bs-50|imb-cifar-bs-50|noise-cifar-bs-50)-(bcsr|herding|gradmatch|gss|coreset|uniform)_', filename)
+    match = re.search(r'(\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2})-(cifar-bs-50|imb-cifar-bs-50|noise-cifar-bs-50|cifar10-bs-50|imb-cifar10-bs-50|noise-cifar10-bs-50|mnist-bs-50|imb-mnist-bs-50|noise-mnist-bs-50)-(bcsr|herding|gradmatch|gss|coreset|uniform)_', filename)
     if match:
         return {
             'timestamp': match.group(1),
@@ -231,7 +231,17 @@ def main():
     groups = group_by_seed(results)
 
     # 数据集和方法
-    datasets = ['cifar-bs-50', 'imb-cifar-bs-50', 'noise-cifar-bs-50']
+    datasets = [
+    'cifar-bs-50',
+    'imb-cifar-bs-50',
+    'noise-cifar-bs-50',
+    'cifar10-bs-50',
+    'imb-cifar10-bs-50',
+    'noise-cifar10-bs-50',
+    'mnist-bs-50',
+    'imb-mnist-bs-50',
+    'noise-mnist-bs-50',
+]
     methods = ['bcsr', 'herding', 'gradmatch', 'gss', 'uniform']
 
     # 打印表格

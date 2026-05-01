@@ -57,6 +57,36 @@ pip install torch>=2.0.0 torchvision>=0.15.0 --index-url https://download.pytorc
 
 详见: [docs/COLAB_USAGE.md](docs/COLAB_USAGE.md)
 
+## 支持的数据集
+
+本项目支持以下持续学习数据集：
+
+### 图像数据集
+- **CIFAR-100**: 100 类，每任务 5 类（20 任务）
+- **CIFAR-10**: 10 类，每任务 2 类（5 任务）[新增]
+- **MNIST**: 10 类，每任务 2 类（5 任务）[新增]
+
+### 变体版本
+每个数据集都有三种变体：
+- **平衡版本**: 标准持续学习设置
+- **不平衡版本**: 长尾分布，测试鲁棒性
+- **噪声版本**: 20% 标签噪声，测试抗噪能力
+
+### 快速开始
+
+```bash
+# CIFAR-10 实验（推荐用于快速验证）
+python main.py --select_type bcsr --dataset cifar10-bs-50 --seed 0
+
+# MNIST 实验（推荐用于调试）
+python main.py --select_type bcsr --dataset mnist-bs-50 --seed 0
+
+# 批量运行所有数据集
+python run_experiments.py --datasets all
+```
+
+详细数据集信息请查看 [docs/DATASETS.md](docs/DATASETS.md)。
+
 ## 快速开始
 
 ### BCSR Coreset选择

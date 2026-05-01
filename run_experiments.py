@@ -2,7 +2,7 @@
 """
 批量运行 BCSR 持续学习实验矩阵
 
-实验配置：5方法 x 3数据集 x 3随机种子 = 45组实验
+实验配置：5方法 x 9数据集 x 3随机种子 = 135组实验
 
 使用方式:
     # 串行运行（安全）
@@ -28,7 +28,17 @@ import json
 
 # 实验配置矩阵
 METHODS = ['bcsr', 'herding', 'gradmatch', 'gss', 'uniform']
-DATASETS = ['cifar-bs-50', 'imb-cifar-bs-50', 'noise-cifar-bs-50']
+DATASETS = [
+    'cifar-bs-50',           # CIFAR-100 (5 classes/task)
+    'imb-cifar-bs-50',       # Imbalanced CIFAR-100
+    'noise-cifar-bs-50',     # Noisy CIFAR-100
+    'cifar10-bs-50',         # CIFAR-10 (2 classes/task) [NEW]
+    'imb-cifar10-bs-50',     # Imbalanced CIFAR-10 [NEW]
+    'noise-cifar10-bs-50',   # Noisy CIFAR-10 [NEW]
+    'mnist-bs-50',           # MNIST (2 classes/task) [NEW]
+    'imb-mnist-bs-50',       # Imbalanced MNIST [NEW]
+    'noise-mnist-bs-50',     # Noisy MNIST [NEW]
+]
 DEFAULT_SEEDS = [0, 1, 2]
 
 # 超参数配置（对应论文Table 1-3）
@@ -50,6 +60,44 @@ HYPERPARAMS = {
         'ref_hyp': 0.1,
         'lr_proxy_model': 10.0,
         'lr_weight': 10.0,
+    },
+    # CIFAR-10 variants
+    'cifar10-bs-50': {
+        'lr_decay': 0.9,
+        'ref_hyp': 0.5,
+        'lr_proxy_model': 5.0,
+        'lr_weight': 5.0,
+    },
+    'imb-cifar10-bs-50': {
+        'lr_decay': 0.875,
+        'ref_hyp': 0.1,
+        'lr_proxy_model': 10.0,
+        'lr_weight': 10.0,
+    },
+    'noise-cifar10-bs-50': {
+        'lr_decay': 0.875,
+        'ref_hyp': 0.1,
+        'lr_proxy_model': 10.0,
+        'lr_weight': 10.0,
+    },
+    # MNIST variants (higher learning rates for faster convergence)
+    'mnist-bs-50': {
+        'lr_decay': 0.9,
+        'ref_hyp': 0.5,
+        'lr_proxy_model': 10.0,
+        'lr_weight': 10.0,
+    },
+    'imb-mnist-bs-50': {
+        'lr_decay': 0.875,
+        'ref_hyp': 0.1,
+        'lr_proxy_model': 15.0,
+        'lr_weight': 15.0,
+    },
+    'noise-mnist-bs-50': {
+        'lr_decay': 0.875,
+        'ref_hyp': 0.1,
+        'lr_proxy_model': 15.0,
+        'lr_weight': 15.0,
     },
 }
 
