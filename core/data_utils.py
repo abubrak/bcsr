@@ -387,6 +387,115 @@ def get_multitask_cifar10_loaders(num_tasks, batch_size, num_examples):
 
     return all_mtl_data
 
+def get_imbalanced_split_cifar10(task_id, batch_size, cifar_train, cifar_test):
+    """
+    Returns imbalanced split CIFAR-10 dataset for a single task
+
+    Uses exponential imbalance factor: img_max * (imb_factor^(class_idx/(n_classes-1)))
+    This creates a long-tailed distribution where some classes have much fewer samples.
+
+    Args:
+        task_id: Task identifier (1-5)
+        batch_size: Batch size
+        cifar_train: CIFAR-10 training dataset
+        cifar_test: CIFAR-10 test dataset
+
+    Returns:
+        train_loader, test_loader: Data loaders with imbalanced training data
+    """
+    # CIFAR-10 不平衡配置
+    class_shuffle = [3, 1, 8, 4, 6, 0, 9, 2, 5, 7]  # 10 classes
+
+    n_class = 10
+    full_train_x = cifar_train.data
+    full_train_y = cifar_train.targets
+
+    start_class = (task_id - 1) * 2
+    end_class = task_id * 2
+
+    len_per_class = []
+    idx_per_class = []
+    imbalanced_idx = []
+
+    # CIFAR-10 每类约 5000 样本
+    img_max = len(cifar_train.targets) // n_class
+    imb_factor = 1. / 10.  # 不平衡因子
+
+    for class_number in range(n_class):
+        cid_index = np.asarray([i for i, c in enumerate(cifar_train.targets)
+                                if c == class_shuffle[class_number]])
+        num_sample = int(img_max * (imb_factor ** (class_number / (n_class - 1))))
+        idx_per_class.append(torch.from_numpy(cid_index[:num_sample]))
+        len_per_class.append(num_sample)
+
+    cifar_train_new = copy.deepcopy(cifar_train)
+
+    imbalanced_idx = torch.squeeze(torch.cat(idx_per_class))
+    shuffle = torch.randperm(len(imbalanced_idx))
+    imbalanced_idx = imbalanced_idx[shuffle]
+    imbalanced_idx = imbalanced_idx.numpy()
+
+    cifar_train_new.data = cifar_train.data[imbalanced_idx]
+    cifar_train_new.targets = [cifar_train.targets[i] for i in imbalanced_idx]
+
+    target_train_idx = [1 if ((i >= start_class) & (i < end_class)) else 0
+                        for i in cifar_train_new.targets]
+    target_test_idx = [1 if ((i >= start_class) & (i < end_class)) else 0
+                       for i in cifar_test.targets]
+
+    train_loader = torch.utils.data.DataLoader(
+        torch.utils.data.dataset.Subset(cifar_train_new, np.where(np.array(target_train_idx) == 1)[0]),
+        batch_size=batch_size, shuffle=True
+    )
+    test_loader = torch.utils.data.DataLoader(
+        torch.utils.data.dataset.Subset(cifar_test, np.where(np.array(target_test_idx) == 1)[0]),
+        batch_size=batch_size, shuffle=True
+    )
+
+    print('imbalanced Split CIFAR-10')
+    if task_id == 1:
+        print('Number of instance per class: %s' % len_per_class)
+
+    pppp = np.array(cifar_train_new.targets)[np.where(np.array(target_train_idx) == 1)[0]]
+    print('Number of instance per class: for task %d %s' % (
+        task_id, [sum(pppp == se) for se in range(start_class, end_class)]))
+
+    return train_loader, test_loader
+
+def get_subset_imbalanced_split_cifar10(task_id, batch_size, cifar_train, num_examples):
+    """
+    Returns imbalanced split CIFAR-10 subset for coreset selection
+
+    Args:
+        task_id: Task identifier (1-5)
+        batch_size: Batch size
+        cifar_train: CIFAR-10 training dataset
+        num_examples: Number of examples to sample
+
+    Returns:
+        train_loader, []: Training loader with imbalanced data
+    """
+    start_class = (task_id - 1) * 2
+    end_class = task_id * 2
+    n_class = 10
+    targets_train = torch.tensor(cifar_train.targets)
+
+    img_max = len(cifar_train.targets) // n_class
+    imb_factor = 1. / 100
+    trains = []
+
+    for class_number in range(start_class, end_class):
+        target = (targets_train == class_number)
+        per_class_examples = int(img_max * (imb_factor ** (class_number / (n_class - 1))))
+        class_train_idx = np.random.choice(np.where(target == 1)[0], per_class_examples, False)
+        current_class_train_dataset = torch.utils.data.dataset.Subset(cifar_train, class_train_idx)
+        trains.append(current_class_train_dataset)
+
+    trains = ConcatDataset(trains)
+    train_loader = torch.utils.data.DataLoader(trains, batch_size=batch_size, shuffle=True)
+
+    return train_loader, []
+
 #########################################################################################################
 ###        Imbalanced Rotated MNIST
 #########################################################################################################
@@ -1014,10 +1123,15 @@ def get_all_loaders(seed, dataset, num_tasks, bs_inter, bs_intra, num_examples, 
 
             elif 'cifar10' in dataset:
                 if 'imb' in dataset:
-                    # Task 2 会实现
-                    raise NotImplementedError("Imbalanced CIFAR-10 not implemented yet")
+                    seq_loader_train, seq_loader_val = fast_cifar_loader(
+                        get_imbalanced_split_cifar10(task, bs_intra, cifar_train, cifar_test),
+                        task, 'cpu'
+                    )
+                    sub_loader_train, _ = fast_cifar_loader(
+                        get_subset_imbalanced_split_cifar10(task, bs_inter, cifar_train, 5 * num_examples),
+                        task, 'cpu'
+                    )
                 elif 'noise' in dataset:
-                    # Task 3 会实现
                     raise NotImplementedError("Noisy CIFAR-10 not implemented yet")
                 else:
                     seq_loader_train , seq_loader_val = fast_cifar_loader(get_split_cifar10(task, bs_intra, cifar_train, cifar_test), task, 'cpu')
@@ -1054,8 +1168,20 @@ def get_all_loaders(seed, dataset, num_tasks, bs_inter, bs_intra, num_examples, 
                     seq_loader_train , seq_loader_val = fast_mnist_loader(get_rotated_mnist(task, bs_intra, per_task_rotation, num_examples), 'cpu')
                     sub_loader_train , _ = fast_mnist_loader(get_subset_rotated_mnist(task, bs_inter, num_examples, per_task_rotation),'cpu')
             elif 'cifar10' in dataset:
-                seq_loader_train , seq_loader_val = fast_cifar_loader(get_split_cifar10(task, bs_intra, cifar_train, cifar_test), task, 'cpu')
-                sub_loader_train , _ = fast_cifar_loader(get_subset_split_cifar10(task, bs_inter, cifar_train, 5*num_examples), task, 'cpu')
+                if 'imb' in dataset:
+                    seq_loader_train, seq_loader_val = fast_cifar_loader(
+                        get_imbalanced_split_cifar10(task, bs_intra, cifar_train, cifar_test),
+                        task, 'cpu'
+                    )
+                    sub_loader_train, _ = fast_cifar_loader(
+                        get_subset_imbalanced_split_cifar10(task, bs_inter, cifar_train, 5 * num_examples),
+                        task, 'cpu'
+                    )
+                elif 'noise' in dataset:
+                    raise NotImplementedError("Noisy CIFAR-10 not implemented yet")
+                else:
+                    seq_loader_train , seq_loader_val = fast_cifar_loader(get_split_cifar10(task, bs_intra, cifar_train, cifar_test), task, 'cpu')
+                    sub_loader_train , _ = fast_cifar_loader(get_subset_split_cifar10(task, bs_inter, cifar_train, 5*num_examples), task, 'cpu')
             elif 'cifar' in dataset:
                 seq_loader_train , seq_loader_val = fast_cifar_loader(get_split_cifar100(task, bs_intra, cifar_train, cifar_test), task, 'cpu')
                 sub_loader_train , _ = fast_cifar_loader(get_subset_split_cifar100(task, bs_inter, cifar_train, 5*num_examples), task, 'cpu')
