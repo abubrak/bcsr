@@ -29,11 +29,8 @@ env/
 # Model checkpoints (51MB+)
 checkpoints/
 
-# Data files (339MB+)
-data/cifar-100-python/
-data/loss_data/
-data/*.tar.gz
-data/*.zip
+# Data files (600MB+, datasets should be downloaded separately)
+data/
 
 # Training outputs
 summary/
@@ -49,6 +46,7 @@ summary/
 
 # Backup / generated files
 *.backup
+*.bak
 *.txt
 !LICENSE
 !requirements.txt
