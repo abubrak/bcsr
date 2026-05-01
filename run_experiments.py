@@ -2,7 +2,7 @@
 """
 批量运行 BCSR 持续学习实验矩阵
 
-实验配置：2方法 x 3数据集 x 3随机种子 = 18组实验
+实验配置：5方法 x 3数据集 x 3随机种子 = 45组实验
 
 使用方式:
     # 串行运行（安全）
@@ -27,7 +27,7 @@ from datetime import datetime
 import json
 
 # 实验配置矩阵
-METHODS = ['bcsr', 'uniform']  # coreset 方法需要 NTK，未实现
+METHODS = ['bcsr', 'herding', 'gradmatch', 'gss', 'uniform']
 DATASETS = ['cifar-bs-50', 'imb-cifar-bs-50', 'noise-cifar-bs-50']
 DEFAULT_SEEDS = [0, 1, 2]
 
@@ -226,7 +226,7 @@ def print_summary(results):
 def main():
     parser = argparse.ArgumentParser(description='批量运行 BCSR 持续学习实验')
     parser.add_argument('--methods', nargs='+', choices=METHODS + ['all'],
-                        default=['all'], help='选择运行的方法 [bcsr, uniform, all]')
+                        default=['all'], help='选择运行的方法 [bcsr, herding, gradmatch, gss, uniform, all]')
     parser.add_argument('--datasets', nargs='+', choices=DATASETS + ['all'],
                         default=['all'], help='选择运行的数据集')
     parser.add_argument('--seeds', type=int, nargs='+', default=DEFAULT_SEEDS,

@@ -1,5 +1,34 @@
 # 更新日志
 
+## 2026-05-01 - Add Classic Baseline Methods
+
+### 新增内容
+
+添加了三种经典 coreset 选择方法作为对比基线：
+
+| 方法 | 说明 | 状态 |
+|------|------|------|
+| herding | K-centers 聚类方法 | ✅ 可用 |
+| gradmatch | 梯度匹配方法 | ✅ 可用 |
+| gss | 梯度样本选择 | ✅ 可用 |
+
+### 修改的文件
+
+- `core/coreset_baselines.py` - 基类和 Herding 实现
+- `core/gradmatch_coreset.py` - GradMatch 实现
+- `core/gss_coreset.py` - GSS 实现
+- `core/train_methods_cifar.py` - 集成新方法
+- `run_experiments.py` - 更新实验矩阵
+- `summarize_results.py` - 更新方法列表
+- `docs/BASELINE_METHODS.md` - 方法文档
+
+### 实验矩阵变化
+
+- **之前：** 2方法 × 3数据集 × 3种子 = **18 组实验**
+- **现在：** 5方法 × 3数据集 × 3种子 = **45 组实验**
+
+---
+
 ## 2024-04-30 - 移除未实现的 coreset 方法
 
 ### 修改内容

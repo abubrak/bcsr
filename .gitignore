@@ -18,21 +18,49 @@ build/
 # OS
 .DS_Store
 Thumbs.db
+Desktop.ini
 
 # Environment
 .env
 venv/
 .venv/
+env/
 
-# Data (large files)
+# Model checkpoints (51MB+)
+checkpoints/
+
+# Data files (339MB+)
+data/cifar-100-python/
+data/loss_data/
 data/*.tar.gz
 data/*.zip
 
-# Backup files
+# Training outputs
+summary/
+
+# Pytest cache
+.pytest_cache/
+
+# Model / serialization files
+*.pth
+*.pkl
+*.pt
+*.h5
+
+# Backup / generated files
 *.backup
+*.txt
+!LICENSE
+!requirements.txt
 
+# Generated documentation (keep README.md only)
+BUGFIX_*.md
+UPGRADE_*.md
+CHANGELOG.md
+EXPERIMENTS.md
+QUICKSTART.md
+TASK3_*.md
+docs/
 
-*.md
-#Test
+# Test artifacts
 test_output/
-test_*

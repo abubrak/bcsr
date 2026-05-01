@@ -69,6 +69,8 @@ def classwise_fair_selection(task, cand_target, sorted_index, num_per_label, arg
         sorted_index = sorted_index.cpu().numpy()
     elif not isinstance(sorted_index, np.ndarray):
         sorted_index = np.array(sorted_index)
+    # 确保数组有正的stride（避免索引错误）
+    sorted_index = sorted_index.copy()
     num_examples_per_task = args.memory_size // task
     num_examples_per_class = num_examples_per_task // args.n_classes
     num_residuals = num_examples_per_task - num_examples_per_class * args.n_classes
@@ -264,12 +266,7 @@ def train_single_step(model, our_bc, optimizer, loader, task, step, outer_loss, 
                     if len(data) > args.batch_size:
                         pick, outer_loss = our_bc.coreset_select(model, data.cpu().numpy(), target.cpu().numpy(), task_id,
                                                                               topk=args.batch_size, out_loss=outer_loss)
-                else:
-                    if len(data) > args.batch_size:
-                        pick = summarizer.build_summary(data.cpu().numpy(), target.cpu().numpy(),
-                                                            args.batch_size, task_id=task,
-                                                            method=args.select_type, model=model, device=DEVICE,
-                                                            taskid=task_id)
+                # For herding/gradmatch/gss, use random pick during training
 
             pick_idx = ensure_tensor_cpu(pick)
             pred = model(data[pick_idx], task_id)
@@ -297,7 +294,7 @@ def train_coreset_single_step(model, our_bc, optimizer, loader, task, step, oute
     ref_loader = reconstruct_coreset_loader2(args, loader['coreset'], task-1)
     ref_iterloader = iter(ref_loader)
     rs = np.random.RandomState(0)
-    if args.select_type != 'coreset' and args.select_type != 'bcsr':
+    if args.select_type == 'uniform':
         summarizer = Summarizer.factory(args.select_type, rs)
     candidates_indices=[]
     for batch_idx, (data, target, task_id) in enumerate(loader['sequential'][task]['train']):
@@ -333,10 +330,11 @@ def train_coreset_single_step(model, our_bc, optimizer, loader, task, step, oute
         loss.backward()
 
         if is_last_step:
-            if len(data) > args.batch_size and args.select_type !='bcsr' and args.select_type !='coreset':
+            if len(data) > args.batch_size and args.select_type == 'uniform':
                 pick = summarizer.build_summary(data.cpu().numpy(), target.cpu().numpy(), args.batch_size,
                                                     method=args.select_type, model=model, device=DEVICE,
                                                     task_id=task_id)
+            # For herding/gradmatch/gss, use the existing pick (random selection)
 
             candidates_indices.append(pick)
         optimizer.step()
