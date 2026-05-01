@@ -1329,7 +1329,7 @@ def get_all_loaders(seed, dataset, num_tasks, bs_inter, bs_intra, num_examples, 
                         get_subset_split_mnist(task, bs_inter, mnist_train, 5 * num_examples),
                         task, 'cpu'
                     )
-                loaders['coreset'][task]['train'] = Coreset(c_size, [1, 28, 28])
+                loaders['coreset'][task]['train'] = Coreset(c_size)
             loaders['sequential'][task]['train'], loaders['sequential'][task]['val'] = seq_loader_train, seq_loader_val
             loaders['subset'][task]['train'] = sub_loader_train
         return loaders
