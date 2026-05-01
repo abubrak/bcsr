@@ -653,6 +653,114 @@ def get_multitask_mnist_loaders(num_tasks, batch_size, num_examples):
 
     return all_mtl_data
 
+def get_imbalanced_split_mnist(task_id, batch_size, mnist_train, mnist_test):
+    """
+    Returns imbalanced split MNIST dataset for a single task
+
+    Args:
+        task_id: Task identifier (1-5)
+        batch_size: Batch size
+        mnist_train: MNIST training dataset
+        mnist_test: MNIST test dataset
+
+    Returns:
+        train_loader, test_loader: Data loaders with imbalanced training data
+    """
+    # MNIST 不平衡配置
+    class_shuffle = [1, 3, 0, 7, 9, 5, 2, 8, 4, 6]  # 10 classes
+
+    n_class = 10
+    full_train_x = mnist_train.data
+    full_train_y = mnist_train.targets
+
+    start_class = (task_id - 1) * 2
+    end_class = task_id * 2
+
+    len_per_class = []
+    idx_per_class = []
+    imbalanced_idx = []
+
+    # MNIST 每类约 6700 样本
+    img_max = len(mnist_train.targets) // n_class
+    imb_factor = 1. / 10.
+
+    for class_number in range(n_class):
+        cid_index = np.asarray([i for i, c in enumerate(mnist_train.targets)
+                                if c == class_shuffle[class_number]])
+        num_sample = int(img_max * (imb_factor ** (class_number / (n_class - 1))))
+        idx_per_class.append(torch.from_numpy(cid_index[:num_sample]))
+        len_per_class.append(num_sample)
+
+    mnist_train_new = copy.deepcopy(mnist_train)
+
+    imbalanced_idx = torch.squeeze(torch.cat(idx_per_class))
+    shuffle = torch.randperm(len(imbalanced_idx))
+    imbalanced_idx = imbalanced_idx[shuffle]
+    imbalanced_idx = imbalanced_idx.numpy()
+
+    mnist_train_new.data = mnist_train.data[imbalanced_idx]
+    mnist_train_new.targets = [mnist_train.targets[i] for i in imbalanced_idx]
+
+    target_train_idx = [1 if ((i >= start_class) & (i < end_class)) else 0
+                        for i in mnist_train_new.targets]
+    target_test_idx = [1 if ((i >= start_class) & (i < end_class)) else 0
+                       for i in mnist_test.targets]
+
+    train_loader = torch.utils.data.DataLoader(
+        torch.utils.data.dataset.Subset(mnist_train_new, np.where(np.array(target_train_idx) == 1)[0]),
+        batch_size=batch_size, shuffle=True
+    )
+    test_loader = torch.utils.data.DataLoader(
+        torch.utils.data.dataset.Subset(mnist_test, np.where(np.array(target_test_idx) == 1)[0]),
+        batch_size=batch_size, shuffle=True
+    )
+
+    print('imbalanced Split MNIST')
+    if task_id == 1:
+        print('Number of instance per class: %s' % len_per_class)
+
+    pppp = np.array(mnist_train_new.targets)[np.where(np.array(target_train_idx) == 1)[0]]
+    print('Number of instance per class: for task %d %s' % (
+        task_id, [sum(pppp == se) for se in range(start_class, end_class)]))
+
+    return train_loader, test_loader
+
+def get_subset_imbalanced_split_mnist(task_id, batch_size, mnist_train, num_examples):
+    """
+    Returns imbalanced split MNIST subset for coreset selection
+
+    Args:
+        task_id: Task identifier (1-5)
+        batch_size: Batch size
+        mnist_train: MNIST training dataset
+        num_examples: Number of examples to sample
+
+    Returns:
+        train_loader, []: Training loader with imbalanced data
+    """
+    start_class = (task_id - 1) * 2
+    end_class = task_id * 2
+    n_class = 10
+    targets_train = torch.tensor(mnist_train.targets)
+
+    img_max = len(mnist_train.targets) // n_class
+    imb_factor = 1. / 10.
+    trains = []
+
+    for class_number in range(start_class, end_class):
+        target = (targets_train == class_number)
+        per_class_examples = int(img_max * (imb_factor ** (class_number / (n_class - 1))))
+        per_class_examples = min(per_class_examples, len(np.where(target == 1)[0]))
+        class_train_idx = np.random.choice(np.where(target == 1)[0], per_class_examples, False)
+        current_class_train_dataset = torch.utils.data.dataset.Subset(mnist_train, class_train_idx)
+        trains.append(current_class_train_dataset)
+
+    trains = ConcatDataset(trains)
+    train_loader = torch.utils.data.DataLoader(trains, batch_size=batch_size, shuffle=True)
+
+    return train_loader, []
+
+
 #########################################################################################################
 ###        Imbalanced Rotated MNIST
 #########################################################################################################
@@ -1317,7 +1425,14 @@ def get_all_loaders(seed, dataset, num_tasks, bs_inter, bs_intra, num_examples, 
                 loaders['coreset'][task]['train'] = Coreset(c_size, [3, 32, 32])
             elif 'mnist' in dataset:
                 if 'imb' in dataset:
-                    raise NotImplementedError("Imbalanced MNIST not implemented yet")
+                    seq_loader_train, seq_loader_val = fast_mnist_loader(
+                        get_imbalanced_split_mnist(task, bs_intra, mnist_train, mnist_test),
+                        task, 'cpu'
+                    )
+                    sub_loader_train, _ = fast_mnist_loader(
+                        get_subset_imbalanced_split_mnist(task, bs_inter, mnist_train, 5 * num_examples),
+                        task, 'cpu'
+                    )
                 elif 'noise' in dataset:
                     raise NotImplementedError("Noisy MNIST not implemented yet")
                 else:
@@ -1371,14 +1486,24 @@ def get_all_loaders(seed, dataset, num_tasks, bs_inter, bs_intra, num_examples, 
                 seq_loader_train , seq_loader_val = fast_cifar_loader(get_split_cifar100(task, bs_intra, cifar_train, cifar_test), task, 'cpu')
                 sub_loader_train , _ = fast_cifar_loader(get_subset_split_cifar100(task, bs_inter, cifar_train, 5*num_examples), task, 'cpu')
             elif 'mnist' in dataset:
-                seq_loader_train, seq_loader_val = fast_mnist_loader(
-                    get_split_mnist(task, bs_intra, mnist_train, mnist_test),
-                    task, 'cpu'
-                )
-                sub_loader_train, _ = fast_mnist_loader(
-                    get_subset_split_mnist(task, bs_inter, mnist_train, 5 * num_examples),
-                    task, 'cpu'
-                )
+                if 'imb' in dataset:
+                    seq_loader_train, seq_loader_val = fast_mnist_loader(
+                        get_imbalanced_split_mnist(task, bs_intra, mnist_train, mnist_test),
+                        task, 'cpu'
+                    )
+                    sub_loader_train, _ = fast_mnist_loader(
+                        get_subset_imbalanced_split_mnist(task, bs_inter, mnist_train, 5 * num_examples),
+                        task, 'cpu'
+                    )
+                else:
+                    seq_loader_train, seq_loader_val = fast_mnist_loader(
+                        get_split_mnist(task, bs_intra, mnist_train, mnist_test),
+                        task, 'cpu'
+                    )
+                    sub_loader_train, _ = fast_mnist_loader(
+                        get_subset_split_mnist(task, bs_inter, mnist_train, 5 * num_examples),
+                        task, 'cpu'
+                    )
             loaders['sequential'][task]['train'], loaders['sequential'][task]['val'] = seq_loader_train, seq_loader_val
             loaders['subset'][task]['train'] = sub_loader_train
         return loaders
