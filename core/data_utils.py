@@ -496,6 +496,56 @@ def get_subset_imbalanced_split_cifar10(task_id, batch_size, cifar_train, num_ex
 
     return train_loader, []
 
+
+def get_noise_split_cifar10(task, bs_intra, cifar_train, cifar_test, noise_rate=0.2):
+    """
+    Returns split CIFAR-10 with label noise
+
+    Randomly flips a fraction (noise_rate) of training labels within the task's classes.
+
+    Args:
+        task: Task identifier (1-5)
+        bs_intra: Batch size
+        cifar_train: CIFAR-10 training dataset
+        cifar_test: CIFAR-10 test dataset
+        noise_rate: Fraction of labels to corrupt (default 0.2 = 20%)
+
+    Returns:
+        train_loader, test_loader: Data loaders with noisy training labels
+    """
+    start_class = (task - 1) * 2
+    end_class = task * 2
+
+    target_train_idx = [1 if ((i >= start_class) & (i < end_class)) else 0
+                        for i in cifar_train.targets]
+    target_test_idx = [1 if ((i >= start_class) & (i < end_class)) else 0
+                       for i in cifar_test.targets]
+
+    target_train_idx = np.where(np.array(target_train_idx) == 1)[0]
+    target_test_idx = np.where(np.array(target_test_idx) == 1)[0]
+
+    # 添加标签噪声
+    selected_num = int(len(target_train_idx) * noise_rate)
+    np.random.shuffle(target_train_idx)
+    selected_idx = target_train_idx[:selected_num]
+
+    for i in selected_idx:
+        # 在任务类别范围内随机分配新标签
+        cifar_train.targets[i] = np.random.randint(start_class, end_class)
+
+    train_loader = torch.utils.data.DataLoader(
+        torch.utils.data.dataset.Subset(cifar_train, target_train_idx),
+        batch_size=bs_intra, shuffle=True
+    )
+    test_loader = torch.utils.data.DataLoader(
+        torch.utils.data.dataset.Subset(cifar_test, target_test_idx),
+        batch_size=bs_intra, shuffle=True
+    )
+
+    print('Noisy Split CIFAR-10 (noise_rate=%.2f)' % noise_rate)
+
+    return train_loader, test_loader
+
 #########################################################################################################
 ###        Imbalanced Rotated MNIST
 #########################################################################################################
@@ -1132,7 +1182,11 @@ def get_all_loaders(seed, dataset, num_tasks, bs_inter, bs_intra, num_examples, 
                         task, 'cpu'
                     )
                 elif 'noise' in dataset:
-                    raise NotImplementedError("Noisy CIFAR-10 not implemented yet")
+                    seq_loader_train, seq_loader_val = fast_cifar_loader(
+                        get_noise_split_cifar10(task, bs_intra, cifar_train, cifar_test),
+                        task, 'cpu'
+                    )
+                    sub_loader_train = None  # 噪声数据集不使用 subset
                 else:
                     seq_loader_train , seq_loader_val = fast_cifar_loader(get_split_cifar10(task, bs_intra, cifar_train, cifar_test), task, 'cpu')
                     sub_loader_train , _ = fast_cifar_loader(get_subset_split_cifar10(task, bs_inter, cifar_train, 5*num_examples), task, 'cpu')
@@ -1178,7 +1232,11 @@ def get_all_loaders(seed, dataset, num_tasks, bs_inter, bs_intra, num_examples, 
                         task, 'cpu'
                     )
                 elif 'noise' in dataset:
-                    raise NotImplementedError("Noisy CIFAR-10 not implemented yet")
+                    seq_loader_train, seq_loader_val = fast_cifar_loader(
+                        get_noise_split_cifar10(task, bs_intra, cifar_train, cifar_test),
+                        task, 'cpu'
+                    )
+                    sub_loader_train = None  # 噪声数据集不使用 subset
                 else:
                     seq_loader_train , seq_loader_val = fast_cifar_loader(get_split_cifar10(task, bs_intra, cifar_train, cifar_test), task, 'cpu')
                     sub_loader_train , _ = fast_cifar_loader(get_subset_split_cifar10(task, bs_inter, cifar_train, 5*num_examples), task, 'cpu')
